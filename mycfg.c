@@ -88,6 +88,23 @@ void nvic_config(uint8 IRQn,u8 PreemptionPriority,u8 SubPriority)
 }
 
 
+/*****************************************************************************
+ 函 数 名  : gpio_set
+ 功能描述  : IO口电平操作函数
+ 输入参数  : GPIO_TypeDef* GPIOx
+             u16 gpio_pin
+             u16 val
+ 输出参数  : 无
+ 返 回 值  :
+ 调用函数  :
+ 被调函数  :
+
+ 修改历史      :
+  1.日    期   : 2020年2月15日
+    作    者   : zgj
+    修改内容   : 新生成函数
+
+*****************************************************************************/
 void gpio_set(GPIO_TypeDef* GPIOx, u16 gpio_pin,u16 val)
 {
     if(val != RESET)

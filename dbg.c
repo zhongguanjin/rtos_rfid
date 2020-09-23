@@ -7,6 +7,7 @@
 
 
 
+
 char *itoa_my(long value,char *string,int radix);
 void printhex (const unsigned int x);
 
@@ -133,7 +134,42 @@ void printhex (const unsigned int x)
      return crc8;
  }
 
+#if 0
+ //SemHandle_t dbgSem;
+ void DMA1_Channel4_IRQHandler (void)
+ {
+     DMA1->IFCR = DMA1->ISR & 0x0000F000;
+     DMA_Cmd(DMA1_Channel4,DISABLE);
+     //sem_postIsr(dbgSem);
+    // printf("dma ok\r\n");
+ }
 
 
+ void dbg_out(char * buf, u32 len)
+ {
+     /* DMA1 channel4 configuration */  // DMA_Channel_TypeDef
+     u32 tmpreg = DMA1_Channel4->CCR & 0xFFFF800F;
+
+     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
+     DMA_DeInit(DMA1_Channel4);
+     tmpreg |=   DMA_DIR_PeripheralDST | DMA_Mode_Normal|
+                 DMA_PeripheralInc_Disable | DMA_MemoryInc_Enable |
+                 DMA_PeripheralDataSize_Byte | DMA_MemoryDataSize_Byte |
+                 DMA_Priority_High | DMA_M2M_Disable;    // | 0x0000000F
+     DMA1_Channel4->CCR |= tmpreg;
+     DMA1_Channel4->CNDTR = len;
+     DMA1_Channel4->CPAR = (u32)&(USART1->DR);   // USART_TypeDef
+     DMA1_Channel4->CMAR = (u32)(buf);
+
+     /* Enable DMA Channel4Transfer Complete interrupt */
+     DMA_ITConfig(DMA1_Channel4,DMA_IT_TC|DMA_IT_TE, ENABLE);
+     DMA_Cmd(DMA1_Channel4,ENABLE);
+
+     // 采用DMA方式发送
+     USART_DMACmd(USART1,USART_DMAReq_Tx,ENABLE);
+     // 传输完成则进入DMA2_Channel4中断;
+ }
+
+#endif
 
 

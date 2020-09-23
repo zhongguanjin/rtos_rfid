@@ -121,7 +121,7 @@ void com2_rxDeal(void)
 			if(OK == com_getch(COM2,&ch))
 			{
                 rot_val=ch;
-                dbg("rot_val:%x",rot_val);
+                //dbg("rot_val:%x",rot_val);
 			}
 			else
 			{

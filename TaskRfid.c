@@ -30,10 +30,60 @@
 TimerHandle_t   RfidTimeHandle	= NULL;
 void RfidTimerFunction( void *pvParameters );
 
+/*
+ 密钥类型（1 字节）：   0x60——密钥A
+                        0x61——密钥B
+ 密钥区号（1 字节）：   取值范围0～15
+ 密钥（6 字节或16 字节）
+ RF_HEAD_C1E1= 0x0845010E		// 装载IC卡密钥，6位密钥
+向密钥01 区装载密钥A：0xFF 0xFF 0xFF 0xFF 0xFF 0xFF
+*/
+
 const uint8 C1E_info[]={0x60,0x01,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};	// for key1
-const uint8 C2N_info[]={0x03,0x03,0x26,0x45,0x60,0x01,0x08};	// def. key1 for blk1
+
+/*
+ RF_HEAD_C2N = 0x074E020D        // 自动检测
+
+ 自动检测模式ADMode（1 字节）：0x03  数据输出后不继续检测,产生中断,串口主动发送
+
+ 天线驱动方式TxMode（1 字节）： 0：TX1、TX2 交替驱动
+                                1：仅TX1 驱动
+                                2：仅TX2 驱动
+                                3：TX1、TX2 同时驱动
+
+ 请求代码ReqCode（1 字节）：    0x26～IDLE
+                                0x52～ALL
+
+ 验证模式AuthMode（1 字节）：   0x45-‘E’～用E2 密钥验证
+                                0x46-‘F’～用直接密钥验证
+                                0 ～不验证
+
+ 密钥AB KeyType（1 字节）：     0x60～密钥A
+                                0x61～密钥B
+
+ 密钥Key：                      若验证模式为‘E’，则为密钥区号（1 字节）
+                                若验证模式为‘F’，则为密钥（6 或16 字节）
+
+ 卡块号Block（1 字节）：        S50（0～63）
+                                S70（0～255）
+                                PLUS CPU 2K（0～127）
+                                PLUS CPU 4K（0～255）
+
+用E2密钥验证密钥区号01，读出第8块数据内容
+*/
+const uint8 C2N_info[]={0x03,0x03,0x26,0x45,0x60,0x01,0x08};
+
+/*
+ RF_HEAD_C2M= 0x024D0208		// 该命令用于激活卡片，是请求、防碰撞和选择三条命令的组合
+IDLE方式激活
+*/
 const uint8 C2M_info[]={0x00,0x26};
+
+//通过该读取自动检测数据命令，可以决定读取数据后是否继续检测。
 const uint8  C2O_info[] ={0x00};
+
+
+
 
 rfMux_t rfMux;
 
@@ -44,7 +94,26 @@ int16 rf_sendCmd(uint32 cmdHead, const uint8 * info);
 uint8 rf_init(void);
 uint8 rf_wait( void );
 
-void rf_over_check(void);
+u8 rf_goto_auto(void);
+u8 rf_key_check(u8 blk);
+
+void rf_reportMain(u32 id, u32 rfid);
+
+/*钱包相关变量及函数 */
+
+typedef struct
+{
+    u8  mode;
+   	u8  blkid;
+    u8  money[4];
+}rfC2P_t;    //钱包数据结构
+
+u8   blkdef  =0x04;
+u8 money_dec(u8 blk,u32 money);
+u8 money_add(u8 blk,u32 money);
+u8 money_init(u8 blk, u32 money);
+u8 money_balance(u8 blk);
+
 
 
 /*判断卡是否有效，返回1有效，0无效*/
@@ -139,7 +208,7 @@ void rfUsr_showRfSerial(void)
 	while(loop < grfUser.cnt)
 	{
 		dbg("id:%d, serial:%02X %02X %02X %02X",loop,
-		grfUser.serial[loop][0],grfUser.serial[loop][1],grfUser.serial[loop][2],grfUser.serial[loop][3]);
+		grfUser.serial[loop][3],grfUser.serial[loop][2],grfUser.serial[loop][1],grfUser.serial[loop][0]);
 		loop++;
 	}
 	return;
@@ -255,7 +324,7 @@ uint8 rf_wait( void )
            dbg("rfMux.frame_err");
            return ERR;
         }
-	}
+ 	}
 }
 
 /*****************************************************************************
@@ -283,6 +352,7 @@ int16 rf_sendCmd(uint32 cmdHead, const uint8 * info)
 	if((len != 0) && (info != NULL))
 	{
 		memcpy(rfSend.info,info,len);
+		//dbg_hex(rfSend.info,len);
 	}
 	//帧长必须不小于6 字节，最大不能超过70 字节，且帧长必须等于信息长度加6；
 	rfSend.frameLen = rfSend.infoLen + 6;
@@ -310,7 +380,6 @@ int16 rf_sendCmd(uint32 cmdHead, const uint8 * info)
         dbg("overtime\r\n");
         return ERR;
     }
-
 }
 /*****************************************************************************
  函 数 名  : rf_init
@@ -327,6 +396,8 @@ int16 rf_sendCmd(uint32 cmdHead, const uint8 * info)
     修改内容   : 新生成函数
 
 *****************************************************************************/
+u8 devinfo[20];
+
 uint8 rf_init(void)
 {
     uint8 times = 1;
@@ -347,71 +418,102 @@ uint8 rf_init(void)
     times = 2;
 	while(times-- != 0)
 	{
-		if(rf_sendCmd(RF_HEAD_C1A,NULL) == OK)
-		{
-			if(rf_sendCmd(RF_HEAD_C1E1,C1E_info) == OK)
-			{
-			    dbg("RF_HEAD_C1E1 ok");
-				return OK;
-			}
-			else
-			{
-			     dbg("RF_HEAD_C1E1 err");
-			     return ERR;
-			}
-		}
-		else
-		{
-		     dbg("RF_HEAD_C1A err");
-		     return ERR;
-		}
+        //获取模块的版本号
+         if(rf_sendCmd(RF_HEAD_C1A,NULL) == OK)
+         {
+             memcpy(devinfo,rfMux.rPkt.info,20);
+             dbg("%s",devinfo);
+    	    //向密钥01 区装载密钥A：0xFF 0xFF 0xFF 0xFF 0xFF 0xFF
+    	    //此命令是向模块内装载密码，并非改变Mifare1 卡内扇区的密码
+    		if(rf_sendCmd(RF_HEAD_C1E1,C1E_info) == OK)
+    		{
+    		    dbg("RF_HEAD_C1E1 ok");
+    			return OK;
+    		}
+    		else
+    		{
+    		     dbg("RF_HEAD_C1E1 err");
+    		     return ERR;
+    		}
+         }
+        else
+        {
+            chk(1);
+        }
+
 	}
 	return ERR;
 }
 
-void rf_over_check(void)
-{
-	rf_reInitRx(0);
-    if( rf_init() == OK)
-    {
-        /* 检测到模块 进入自动检测模式 */
-        if(rf_sendCmd(RF_HEAD_C2N,C2N_info) == OK)
-        //该命令用于卡片的自动检测，执行该命令成功后，在UART 模式下，模块将主动发送
-        //读取到卡片的数据
-        {
-            dbg("RF_HEAD_C2N ok");
-            rf_reInitRx(1);
-        }
-        else
-        {    /* 检测RF模块错误 */
-            dbg("RF_HEAD_C2N err");
-        }
 
+/*进入自动检测模式 */
+u8 rf_goto_auto(void)
+{
+    /*进入自动检测模式 */
+    if(rf_sendCmd(RF_HEAD_C2N,C2N_info) != OK)
+    //该命令用于卡片的自动检测，执行该命令成功后，在UART 模式下，模块将主动发送
+    //读取到卡片的数据
+    {
+        return ERR;
+    }
+    rf_reInitRx(1);
+    return OK;
+}
+
+/*rf 密钥验证 */
+u8 rf_key_check(u8 blk)
+{
+    if(OK == rf_sendCmd(RF_HEAD_C2M,C2M_info))
+    {
+        rfC2E_t *info;
+        info =(rfC2E_t*)mem_malloc(sizeof(rfC2E_t));
+        if(info  == NULL)
+        {
+            chk(1);
+            return ERR;
+        }
+        info->mode = 0x60;
+
+        memcpy(info->uid,rfMux.devInfo.uid.uch,4);
+        info->keyid = 1;
+        info->blkid = blk;
+        if(OK != rf_sendCmd(RF_HEAD_C2E,&info->mode))
+        {
+            dbg("pwd err");
+            mem_free(info);
+            return ERR;
+        }
+        mem_free(info);
     }
     else
     {
-        dbg("rf_init err");
+        dbg("no card");
+        rf_goto_auto();
+        return ERR;
     }
+    return OK;
 }
-
-
 void rf_init_check(void)
 {
 	rf_reInitRx(0);
     if( rf_init() == OK)
     {
-        /* 检测到模块 进入自动检测模式 */
-        if(rf_sendCmd(RF_HEAD_C2N,C2N_info) == OK)
-        //该命令用于卡片的自动检测，执行该命令成功后，在UART 模式下，模块将主动发送
-        //读取到卡片的数据
+        if(OK == rf_sendCmd(RF_HEAD_C2M,C2M_info))//检测rf card?
         {
-            dbg("RF_HEAD_C2N ok");
-            rfUsr_init();
-            rf_reInitRx(1);
+            msg_sendVal(hMsgSz[MSGQ_RFID],msgType(EVENT_RFID_CHKCARD, 0, 0, 0),0);
         }
         else
-        {    /* 检测RF模块错误 */
-            dbg("RF_HEAD_C2N err");
+        {
+            /* 进入自动检测模式 */
+            if(rf_goto_auto() == OK)
+            {
+                dbg("RF_HEAD_C2N ok");
+                rfUsr_init();
+            }
+            else
+            {    /* 检测RF模块错误 */
+                dbg("RF_HEAD_C2N err");
+            }
         }
     }
     else
@@ -435,67 +537,192 @@ void rf_init_check(void)
     修改内容   : 新生成函数
 
 *****************************************************************************/
-uint32 get_rf_uid(void)
+u32 get_rf_uid(void)
 {
+    dbg("0x%.8X",rfMux.devInfo.uid.u);
     return rfMux.devInfo.uid.u;
 }
 
+void get_dev_info(void)
+{
+     dbg("%s",devinfo);
+}
 /*****************************************************************************
- 函 数 名  : read_rf_dat
- 功能描述  : 读rfid块号的值函数
- 输入参数  : uint8 blank
+ 函 数 名  : money_init
+ 功能描述  : 钱包格式初始化
+ 输入参数  : void
  输出参数  : 无
  返 回 值  :
  调用函数  :
  被调函数  :
 
  修改历史      :
-  1.日    期   : 2018年7月26日
+  1.日    期   : 2020年6月21日
     作    者   : zgj
     修改内容   : 新生成函数
 
 *****************************************************************************/
-void read_rf_dat(uint8 blank)
+u8 money_init(u8 blk, u32 money)
 {
-    rfC2H_t info_w;
-    rfC2E_t info;
-    if(OK == rf_sendCmd(RF_HEAD_C2M,C2M_info))
+    if(OK == rf_key_check(blk)) //验证 ok
     {
-        info.mode = 0x60;                           //0x60——密钥A
-        memcpy(info.uid,rfMux.devInfo.uid.uch,4);   //卡序列号（4 字节）
-        info.keyid = 1;                             //密钥区号（1 字节）： 取值范围0～7
-        info.blkid = blank;
-        /*卡块号（1 字节）：
-            S50（0～63）
-            S70（0～255）
-            PLUS CPU 2K（0～127）
-            PLUS CPU 4K（0～255）
-        */
-        if(OK == rf_sendCmd(RF_HEAD_C2E,(uint8 *)&info)) //密钥验证
+        rfC2P_t *C2pInfo;
+        C2pInfo =(rfC2P_t*)mem_malloc(sizeof(rfC2P_t));
+        if(C2pInfo  == NULL)
         {
-            info_w.blkid = blank;
-            if(OK == rf_sendCmd(RF_HEAD_C2G,(uint8 *)&info_w.blkid))
+            chk(1);
+            return ERR;
+        }
+        C2pInfo->blkid =blk;
+        memcpy(C2pInfo->money,&money,4);
+        if(OK == rf_sendCmd(RF_HEAD_C2P,&C2pInfo->blkid))
+        {
+            dbg("money init ok!");
+			mem_free(C2pInfo);
+            return OK;
+        }
+        mem_free(C2pInfo);
+    }
+    dbg("money init err!");
+    return ERR;
+}
+/*****************************************************************************
+ 函 数 名  : money_add
+ 功能描述  : 钱包充值操作
+ 输入参数  : u8 blk
+             u32 money
+ 输出参数  : 无
+ 返 回 值  :
+ 调用函数  :
+ 被调函数  :
+
+ 修改历史      :
+  1.日    期   : 2020年6月22日
+    作    者   : zgj
+    修改内容   : 新生成函数
+
+*****************************************************************************/
+u8 money_add(u8 blk,u32 money)
+{
+    if(OK == rf_key_check(blk)) //验证 ok
+    {
+        rfC2P_t *C2pInfo;
+        C2pInfo =(rfC2P_t*)mem_malloc(sizeof(rfC2P_t));
+        if(C2pInfo  == NULL)
+        {
+            chk(1);
+            return ERR;
+        }
+        C2pInfo->mode = 0xc1;
+        C2pInfo->blkid =blk;
+        memcpy(C2pInfo->money,&money,4);
+        //dbg_hex(&C2pInfo->mode, 6);
+        if(OK == rf_sendCmd(RF_HEAD_C2J,&C2pInfo->mode)) //充钱
+        {
+            u32 type = msgType(EVENT_RFID_PURSE_BLANCE,MSG_SRC_RFID,MSG_DT_VAL,1);
+            if(msg_sendVal(hMsgSz[MSGQ_RFID],type,C2pInfo->blkid) == OS_FALSE)
             {
-                dbg("info:");
-                dbg_hex(rfMux.rPkt.info,16);
+                chk(1);
+            }
+			mem_free(C2pInfo);
+            return OK;
+        }
+        mem_free(C2pInfo);
+    }
+    dbg("money add err!");
+    return ERR;
+}
+
+/*****************************************************************************
+ 函 数 名  : money_balance
+ 功能描述  : 钱包余额获取
+ 输入参数  : u8 blk
+ 输出参数  : 无
+ 返 回 值  :
+ 调用函数  :
+ 被调函数  :
+
+ 修改历史      :
+  1.日    期   : 2020年6月22日
+    作    者   : zgj
+    修改内容   : 新生成函数
+
+*****************************************************************************/
+u8 money_balance(u8 blk)
+{
+    if(OK == rf_key_check(blk)) //验证 ok
+    {
+        if(OK == rf_sendCmd(RF_HEAD_C2Q,&blk)) //获取余额
+        {
+            u32 balance;
+            memcpy(&balance,rfMux.rPkt.info, 4);
+            dbg("balance:%d",balance);
+            return OK;
+        }
+    }
+    dbg("get balance err!");
+    return ERR;
+}
+
+/*****************************************************************************
+ 函 数 名  : money_dec
+ 功能描述  : 钱包扣款操作
+ 输入参数  : u8 blk
+             u32 money
+ 输出参数  : 无
+ 返 回 值  :
+ 调用函数  :
+ 被调函数  :
+
+ 修改历史      :
+  1.日    期   : 2020年6月22日
+    作    者   : zgj
+    修改内容   : 新生成函数
+
+*****************************************************************************/
+u8 money_dec(u8 blk,u32 money)
+{
+    if(OK == rf_key_check(blk)) //验证 ok
+    {
+        u32 curmoney;
+        rfC2P_t *C2pInfo;
+        C2pInfo =(rfC2P_t*)mem_malloc(sizeof(rfC2P_t));
+        if(C2pInfo  == NULL)
+        {
+            chk(1);
+            return ERR;
+        }
+        C2pInfo->mode = 0xc0;
+        C2pInfo->blkid =blk;
+        memcpy(C2pInfo->money,&money,4);
+        //dbg_hex(&C2pInfo->mode, 6);
+        if(OK == rf_sendCmd(RF_HEAD_C2Q,&C2pInfo->blkid)) //获取值块
+        {
+            //dbg_hex(rfMux.rPkt.info, 4);
+            memcpy(&curmoney,rfMux.rPkt.info, 4);
+            if(curmoney < money)
+            {
+                rf_reportMain(RFID_NSF,curmoney);
+                mem_free(C2pInfo);
+                return OK;
             }
             else
             {
-                dbg("read err!");
+                if(OK == rf_sendCmd(RF_HEAD_C2J,&C2pInfo->mode)) //扣钱
+                {
+                    curmoney=curmoney-money;
+                    rf_reportMain(RFID_GET,curmoney);
+                    mem_free(C2pInfo);
+                    return OK;
+                }
             }
         }
-        else
-        {
-            dbg("password err ");
-        }
+        mem_free(C2pInfo);
     }
-    else
-    {
-         dbg("no card !");
-    }
+    dbg("money dec err!");
+    rf_reportMain(RFID_ERR,0);
+    return ERR;
 }
-
-
 
 /*****************************************************************************
  函 数 名  : rf_reportMain
@@ -575,11 +802,13 @@ void RfidTimerFunction( void *pvParameters )
 
 void TaskRfid(void *pvParameters)
 {
-	task_sleep(1000);
+
 	dbg("CC:%s %s",__DATE__,__TIME__);
+	task_sleep(1000);
+	RfidTimeHandle = TimerCreate(200, RfidTimerFunction);
 	I2C_EE_Config();
 	rf_init_check();  //RFID检测初始化。
-	RfidTimeHandle = TimerCreate(200, RfidTimerFunction);
+	dbg("rf FreeStack:%d",OSTaskGetFreeStackSpace(htaskget(3)));
 	for( ;; )
 	{
 		tMsg_t msg;
@@ -587,19 +816,17 @@ void TaskRfid(void *pvParameters)
 		{
 			switch(msg.id)
 			{
-				case EVENT_RFID_TIMER:
+				case EVENT_RFID_TIMER: //定时检测
 				{
                     if(OK == rf_sendCmd(RF_HEAD_C2M,C2M_info))
                     {
-                       TimerStart(RfidTimeHandle,250);
+                       TimerStart(RfidTimeHandle,1000);
                     }
                     else
                     {
-                        rfMux.status = 0;
                         // 卡移走，再次进入自动模式
-                        if(OK == rf_sendCmd(RF_HEAD_C2N,C2N_info))
+                        if(OK == rf_goto_auto())
                         {
-                            rf_reInitRx(1);
                             rf_reportMain(RFID_LEAVE,rfMux.devInfo.uid.u);
                         }
                     }
@@ -610,32 +837,94 @@ void TaskRfid(void *pvParameters)
                     if(rfMux.rPkt.infoLen == 0x19)
                     {
                         memcpy(&(rfMux.devInfo),rfMux.rxBuf+9,20);
-                        dbg("uid: 0x%X",rfMux.devInfo.uid.u);
-                        rfMux.status = 1;
+                        u16 mifareATQ = rfMux.rPkt.info[2];             //高8位
+                        mifareATQ = (mifareATQ<<8)+ rfMux.rPkt.info[1]; //低8位
+                        u8 mifareSAK= rfMux.rPkt.info[3];
+                        dbg("ATQ:0x%.4x,SAK:0x%.2x,uid: 0x%.8X",mifareATQ,mifareSAK,rfMux.devInfo.uid.u);
 						/* 定时查询卡是否离开 */
-						TimerStart(RfidTimeHandle,250);
-                        rf_reportMain(RFID_GET,rfMux.devInfo.uid.u);
+						rf_reportMain(RFID_GET,rfMux.devInfo.uid.u);
+						//money_dec(blkdef,1);
+						TimerStart(RfidTimeHandle,1000);
+                    }
+                    else if(rfMux.rPkt.infoLen == 0x08)
+                    {
+                        memcpy(&(rfMux.devInfo),rfMux.rxBuf+8,4);
+                        u16 mifareATQ = rfMux.rPkt.info[1];             //高8位
+                        mifareATQ = (mifareATQ<<8)+ rfMux.rPkt.info[0]; //低8位
+                        u8 mifareSAK= rfMux.rPkt.info[2];
+                        dbg("ATQ:0x%.4x,SAK:0x%.2x,uid: 0x%.8X",mifareATQ,mifareSAK,rfMux.devInfo.uid.u);
+						/* 定时查询卡是否离开 */
+						rf_reportMain(RFID_GET,rfMux.devInfo.uid.u);
+						TimerStart(RfidTimeHandle,1000);
                     }
 					break;
 				}
 				case EVENT_RFID_RDBLK:
 				{	/* 读卡数据块 */
-
+					if(OK != rf_key_check(msg.uch[0]))
+					{
+                        break;
+                    }
+					if(OK == rf_sendCmd(RF_HEAD_C2G,msg.uch))
+					{
+						memcpy(rfMux.devInfo.dat,rfMux.rPkt.info,16);
+						dbg("read OK!");
+						dbg_hex(rfMux.devInfo.dat, 16);
+					}
+					else
+					{
+						dbg("read err!");
+					}
 					break;
 				}
 				case EVENT_RFID_WRBLK:
 				{	/* 写卡数据块 */
-
-					break;
-				}
-				default:
-				{
-					dbg("msg rcv:\r\n");
-					dbg_hex((char *)&msg,sizeof(tMsg_t));
-					break;
-				}
-			}
-			mem_free(&msg);
+					if(OK != rf_key_check(*(u8 *)(msg.ptr)))
+					{
+                        break;
+                    }
+                    if(OK == rf_sendCmd(RF_HEAD_C2H,(u8 *)(msg.ptr)))
+                    {
+                        dbg_hex((u8 *)(msg.ptr),16);
+                            dbg("write OK!");
+                    }
+                    else
+                    {
+                            dbg("write err!");
+                    }
+                    break;
+                }
+                case EVENT_RFID_PURSE_INIT:
+                {
+                    dbg("money:0x%.8x",msg.u);
+                    money_init(blkdef, msg.u);
+                    break;
+                }
+                case EVENT_RFID_PURSE_CUT:
+                {
+                    dbg("money:0x%.8x",msg.u);
+                    money_dec(blkdef, msg.u);
+                    break;
+                }
+                case EVENT_RFID_PURSE_BLANCE:
+                {
+                    money_balance(blkdef);
+                    break;
+                }
+                case EVENT_RFID_PURSE_PAY:
+                {
+                    dbg("money:0x%.8x",msg.u);
+                    money_add(blkdef, msg.u);
+                    break;
+                }
+                default:
+                {
+                    dbg("msg rcv:\r\n");
+                    dbg_hex((char *)&msg,sizeof(tMsg_t));
+                    break;
+                }
+          }
+          mem_free(&msg);
 		}
 	}
 }

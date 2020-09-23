@@ -37,6 +37,8 @@ enum {
 #define LP_SLEEP_TICKS	(1000/(LP_CHK_MAX * LP_TIMES))
 
 
+#define PA1_on()    gpio_set(GPIOA,  GPIO_Pin_1, OFF)
+#define PA1_off()   gpio_set(GPIOA,  GPIO_Pin_1, ON)
 
 enum
 {
@@ -67,8 +69,6 @@ typedef enum
 } T_LED_MODE;
 
 
-#define PA0_off()	{GPIOA->BSRR = GPIO_Pin_1;}
-#define PA0_on()	{GPIOA->BRR = GPIO_Pin_1;}
 
 
 

@@ -16,6 +16,8 @@ void com_cycleReset(comCycle_t * pBuf)
 }
 
 
+
+
 void com_init(COM_DEF COMx,u32 baud)
 {
 	com_cycleReset(&(comBuf[COMx].tx));
@@ -30,9 +32,10 @@ void com_init(COM_DEF COMx,u32 baud)
                 gpio_config(GPIOA, GPIO_Pin_9, GPIO_Mode_AF_PP);
                 /* Configure USART Rx1 as floating */
                 gpio_config(GPIOA, GPIO_Pin_10, GPIO_Mode_IN_FLOATING);
+
                 usart_config(USART1, baud);
                 //使能串口1中断，并设置优先级
-                nvic_config(USART1_IRQn,1,0);
+                nvic_config(USART1_IRQn,0,0);
                 break;
             }
         case COM2:
@@ -47,7 +50,7 @@ void com_init(COM_DEF COMx,u32 baud)
                 gpio_config(GPIOD, GPIO_Pin_6, GPIO_Mode_IN_FLOATING);
                 usart_config(USART2, baud);
                 //使能串口2中断，并设置优先级
-                nvic_config(USART2_IRQn,1,0);
+                nvic_config(USART2_IRQn,1,1);
                 break;
             }
         case COM3:
@@ -60,7 +63,7 @@ void com_init(COM_DEF COMx,u32 baud)
                 gpio_config(GPIOB, GPIO_Pin_11,GPIO_Mode_IN_FLOATING);
                 usart_config(USART3, baud);
                 //使能串口3中断，并设置优先级
-                nvic_config(USART3_IRQn,1,0);
+                nvic_config(USART3_IRQn,0,0);
                 break;
             }
         case COM4:
@@ -229,6 +232,8 @@ __weak void com4_rxDeal(void)
 	}
 }
 
+
+
 __weak void USART1_IRQHandler(void)
 {
 	if((USART1->SR & USART_SR_RXNE) != 0)
@@ -252,7 +257,6 @@ __weak void USART1_IRQHandler(void)
 	{
 	    USART_ClearFlag(USART1, USART_FLAG_FE|USART_FLAG_ORE);
 	}
-
 }
 
 

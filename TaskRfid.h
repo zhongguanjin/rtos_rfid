@@ -29,6 +29,7 @@
 
 
 
+
 #define RFID_BUF_MAX	32
 
 
@@ -42,26 +43,24 @@ typedef struct
 	uint8 serial[RFUSER_MAX][4];     /*用户n	存储用户RFID卡*/
 }T_RFUSER;
 
-
+/*
+该命令用模块内部已存入的密钥与卡的密钥进行验证，所以使用该命令前，应事先用“装
+载IC 卡密钥”命令把密钥成功载入模块内，另外，需要验证的卡的扇区号不必与模块内密
+钥区号相等
+*/
 typedef struct
 {
-	u8 mode;
-	u8 uid[4];
-	u8 keyid;
-	u8 blkid;
-} rfC2E_t;    // E2密钥验证信息结构
+	u8 mode;        //0x60——密钥A  0x61——密钥B
+	u8 uid[4];      //卡序列号（4 字节）
+	u8 keyid;       //密钥区号（1 字节）： 取值范围0～7
+	u8 blkid;       //卡块号（1 字节）：S50（0～63）S70（0～255）PLUS CPU 2K（0～127）PLUS CPU 4K（0～255）
+} rfC2E_t;        // E2密钥验证信息结构
 
 typedef struct
 {
 	u8 blkid;
 	u8 dat[16];
 } rfC2H_t;    // 写数据信息结构
-
-typedef struct
-{
-   	u8      blkid;
-    u8	Wallet_val[4];
-}rfC2P_t;
 
 
 
@@ -140,30 +139,9 @@ typedef struct
 #define RF_HEAD_C2Q		0x01510207		// 获取值块的值
 #define RF_HEAD_C2X		0x00580206		// 数据交互命令, info: data+2B
 
-enum
-{
-    STATE_RFID_IDLE =0,
-    STATE_RFID_INIT,
-    STATE_RFID_TIME,  //定时查询卡
-    STATE_RFID_CHKCARD ,  //检测到刷卡
-    STATE_RFID_READCARD,
-    STATE_RFID_WRITEDAT,
-    STATE_RFID_READDAT,
-    STATE_WALLET_INIT,  //钱包初始化
-    STATE_WALLET_DEC,   //钱包扣款
-    STATE_WALLET_INC,   //钱包充值
-    STATE_WALLET_BALANCE, //钱包余额查询
-    STATE_RFID_MAX
-};
 
 
-
-extern void rf_init_check(void);
-
-
-extern uint32 get_rf_uid(void);
-extern void read_rf_dat(uint8 blank);
-
+void rf_init_check(void);
 
 extern int rfUsr_isRfok(u8 *buf);
 extern int rfUsr_isRfFull(void);
@@ -171,11 +149,17 @@ extern int rfUsr_append(u8 *buf);
 extern void rfUsr_showRfSerial(void);
 extern void rfUsr_setDefault(void);
 extern void rfUsr_init(void);
+extern int rfUsr_pop(u8 *buf);
+
 extern uint8 rf_bccCalc(uint8 * buf,uint8 len);
 
 extern void com4_rxDeal(void);
 
 extern void TaskRfid(void *pvParameters);
+
+
+extern u32 get_rf_uid(void);
+extern void get_dev_info(void);
 
 
 #endif

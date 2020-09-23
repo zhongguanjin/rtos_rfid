@@ -23,6 +23,7 @@
 
 #include "Syn6658.h"
 
+#include "TaskRfid.h"
 
 /********************************************************************/
 // 新架构: 模式 + 状态机
@@ -146,17 +147,32 @@ void AppWork_state(Msg_t pm)
 
 void App_Rfid(Msg_t pm)
 {
-	dbg("id:%d, serial:%02X %02X %02X %02X",pm->id,
-		pm->uch[0],pm->uch[1],pm->uch[2],pm->uch[3]);
+	//dbg("id:%d, serial:%02X %02X %02X %02X",pm->id,
+	//	pm->uch[3],pm->uch[2],pm->uch[1],pm->uch[0]);
+    u32 money;
+    memcpy(&money,pm->uch,4);
     switch(pm->id)
     {
         case RFID_GET:
         {
-            dbg("rf_get");
 
-            char str[]={"有效卡"};
-            Syn6658_Play(str,strlen(str));
-            bell_set(BELL_PLAY_SHORT2);
+            if(rfUsr_isRfok(&pm->uch[0])!=ERR)
+            {
+                char str[]={"有效卡"};
+                Syn6658_Play(str,strlen(str));
+                bell_set(BELL_PLAY_SHORT2);
+                //main_reportRf(EVENT_RFID_PURSE_CUT,1);
+                dbg("rf_get ok");
+            }
+            else
+            {
+                char str[]={"无效卡请重刷"};
+                Syn6658_Play(str,strlen(str));
+                dbg("rf_get err");
+            }
+
+            //bell_set(BELL_PLAY_SHORT2);
+            //dbg("money:%d",money);
             break;
         }
         case RFID_LEAVE:
@@ -164,6 +180,20 @@ void App_Rfid(Msg_t pm)
             dbg("rf_leave");
             break;
         }
+        case RFID_NSF:
+        {
+            char str[]={"余额不足请充值"};
+            Syn6658_Play(str,strlen(str));
+            dbg("money:%d",money);
+            break;
+        }
+        case RFID_ERR:
+        {
+            char str[]={"请重刷"};
+            Syn6658_Play(str,strlen(str));
+            break;
+        }
+
         default:
             break;
     }
@@ -200,7 +230,7 @@ void app_stateSet(u32 state)
 
 void app_funcDef(Msg_t pm)
 {
-  dbg("msg type:0x%p val:0x%p",pm->type,pm->val);
+  dbg("msg type:0x%.8x val:0x%x",pm->type,pm->val);
 }
 
 
@@ -238,9 +268,11 @@ void TaskMain( void *pvParameters )
     bell_init();
     MainTimeHandle=TimerCreate(500, MainTimerFunction);
     app_modeSet(1);
+    dbg("main FreeStack:%d",OSTaskGetFreeStackSpace(htaskget(2)));
     for( ;; )
     {
         tMsg_t msg;
+
 	    if(msg_recv(hMsgSz[MSGQ_MAIN],&msg) != OS_FALSE)
         {
             switch(msg.src)
@@ -291,7 +323,7 @@ void TaskMain( void *pvParameters )
                 }
                 default:
                 {
-                    dbg("msg type:0x%p val:0x%p",msg.type,msg.val);
+                    dbg("msg type:0x%.8x val:0x%x",msg.type,msg.val);
                     break;
                 }
             }

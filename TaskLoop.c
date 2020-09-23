@@ -23,7 +23,7 @@
 #include "TaskRfid.h"
 
 #include "Syn6658.h"
-
+#include "mycfg.h"
 void Led_DispPro(void);
 void led_init(void);
 
@@ -41,7 +41,8 @@ void led_init(void);
 ******************************************************************************/
 void led_init(void)
 {
-	// for PA0
+	// for PA1
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
 	gpio_config( GPIOA,GPIO_Pin_1, GPIO_Mode_Out_PP);
 }
 
@@ -113,7 +114,7 @@ void Led_DispPro(void)
 			if(--LedTmr[LEDTMR_RED].uch[0] == 0)
 			{
 				LedTmr[LEDTMR_RED].uch[2] = 1;
-				PA0_on();
+				PA1_on();
 				LedTmr[LEDTMR_RED].uch[1] = LedTmrBak[LEDTMR_RED].uch[1];
 			}
 		}
@@ -122,7 +123,7 @@ void Led_DispPro(void)
 			if(--LedTmr[LEDTMR_RED].uch[1] == 0)
 			{
 				LedTmr[LEDTMR_RED].uch[2] = 0;
-				PA0_off();
+				PA1_off();
 				LedTmr[LEDTMR_RED].uch[0] = LedTmrBak[LEDTMR_RED].uch[0];
 			}
 		}
@@ -155,6 +156,7 @@ void TaskLoop( void *pvParameters )
 	led_init();
     dbg("CC:%s %s",__DATE__,__TIME__);
     task_sleep(10);
+    dbg("loop FreeStack:%d",OSTaskGetFreeStackSpace(htaskget(1)));
     for( ;; )
     {
         if(idx == 0)

@@ -123,7 +123,7 @@ typedef enum {
 typedef enum {
 	MSG_SRC_TIMER = 0, //for tMsg_t.src
 	MSG_SRC_RFID,
-	MSG_SRC_CCU,
+	MSG_SRC_CONSOLE,
 	MSG_SRC_MAIN,
 	MSG_SRC_KEY,
 	MSG_SRC_MAX
@@ -145,6 +145,16 @@ enum {
 	EVENT_RFID_CHKCARD,	/* 检测到卡 */
 	EVENT_RFID_RDBLK,	/* 读块数据 */
 	EVENT_RFID_WRBLK,	/* 写块数据 */
+
+	//EVENT_RFID_SETVAL,   /* 设置值块的值 */
+	//EVENT_RFID_GETVAL,   /* 获取值块的值 */
+    //EVENT_RFID_VALCTR,   /*值块加减操作*/
+
+	EVENT_RFID_PURSE_INIT,   /* 钱包初始化 */
+    EVENT_RFID_PURSE_PAY,     //钱包充值
+    EVENT_RFID_PURSE_CUT,     //钱包扣款
+    EVENT_RFID_PURSE_BLANCE,  //钱包余额
+
 	EVENT_RFID_MAX
 };
 
@@ -152,6 +162,8 @@ enum {
 enum {
     RFID_GET = 0,
     RFID_LEAVE,
+    RFID_NSF,
+    RFID_ERR,
     RFID_MAX
 };
 
@@ -177,7 +189,7 @@ uOSBool_t msg_recv( MsgHandle_t MsgQHandle, Msg_t pMsg);
 #define msg_create(len,size)	OSMsgQCreate(len,size)
 
 extern void hMsgSz_init(void);
-
+extern TaskHandle_t htaskget(u8 num);
 
 #ifdef __cplusplus
 }

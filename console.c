@@ -5,8 +5,12 @@
 #include "osif.h"
 #include "dbg.h"
 
+#include "TaskRfid.h"
+
 int console_main(char * buf, int len);
 void console_mainMenu(void);
+int cs_eepromtest(char * buf, int len);
+void eeprom_Menu(void);
 
 
 
@@ -14,8 +18,8 @@ void console_mainMenu(void);
 
 uint8 val_getPara(uint8 *cp,char *string);
 
-int cs_softtimetest(char * buf, int len);
-void soft_timeMenu(void);
+int cs_rfmifaretest(char * buf, int len);
+void RfMifareMenu(void);
 
 
 consoleCallback console_cb = NULL;
@@ -43,7 +47,8 @@ SemHandle_t csSem		= NULL;
 void console_mainMenu(void)
 {
 	printf("\r\n\t cs menu:\r\n");
-	printf("1,softtime test\r\n");
+	printf("1,rf mifare test\r\n");
+	printf("2,eeprom test\r\n");
 }
 /*****************************************************************************
  函 数 名  : console_main
@@ -73,9 +78,15 @@ int console_main(char * buf, int len)
 	{
 		case '1':
 		{
-		    //soft_timeMenu();
+		    RfMifareMenu();
 		    break;
 		}
+		case '2':
+		{
+		    eeprom_Menu();
+		    break;
+		}
+
 		default:
 		{
             return 1;
@@ -84,7 +95,7 @@ int console_main(char * buf, int len)
 	return 0;
 }
 /*****************************************************************************
- 函 数 名  : soft_timeMenu
+ 函 数 名  : RfMifareMenu
  功能描述  : soft_time菜单函数
  输入参数  : void
  输出参数  : 无
@@ -98,16 +109,127 @@ int console_main(char * buf, int len)
     修改内容   : 新生成函数
 
 *****************************************************************************/
-void soft_timeMenu(void)
+void RfMifareMenu(void)
 {
-    console_cb = cs_softtimetest;
-	printf("\r\n\t softtime menu:\r\n");
-	printf("creat timer:1,arg\r\n");
-	printf("kill timer: 2,arg\r\n");
-	printf("reset timer:3,arg\r\n");
+    console_cb = cs_rfmifaretest;
+	printf("\r\n\t rf mifare menu:\r\n");
+
+	printf("read rf blk:1,blk\r\n");
+	printf("write rf blk:2,blk\r\n");
+
+    printf("purse init:3,money\r\n");
+    printf("purse pay:4,money\r\n");
+    printf("purse cut:5,money\r\n");
+    printf("purse balance:6,blk\r\n");
+
+    printf("c:add rfid user\r\n");
+    printf("d:del rfid user\r\n");
+    printf("e:query rfid user\r\n");
+
 }
 /*****************************************************************************
- 函 数 名  : cs_softtimetest
+ 函 数 名  : eeprom_Menu
+ 功能描述  : eeprom菜单函数
+ 输入参数  : 无
+ 输出参数  : 无
+ 返 回 值  :
+ 调用函数  :
+ 被调函数  :
+
+ 修改历史      :
+  1.日    期   : 2018年8月15日
+    作    者   : zgj
+    修改内容   : 新生成函数
+
+*****************************************************************************/
+void eeprom_Menu(void)
+{
+    console_cb = cs_eepromtest;
+	printf("\r\n\t eeprom menu:\r\n");
+	printf("read:1,addr,len \r\n");
+	printf("write:2,addr,len \r\n");
+	printf("addr:eeprom address,len:byte len\r\n");
+}
+
+
+/*****************************************************************************
+ 函 数 名  : cs_eepromtest
+ 功能描述  : eeprom测试驱动
+ 输入参数  : char * buf
+             int len
+ 输出参数  : 无
+ 返 回 值  :
+ 调用函数  :
+ 被调函数  :
+
+ 修改历史      :
+  1.日    期   : 2018年8月15日
+    作    者   : zgj
+    修改内容   : 新生成函数
+
+*****************************************************************************/
+int cs_eepromtest(char * buf, int len)
+{
+	union {
+		uint8 u[3];
+		struct {
+		    uint8       fun;
+			uint8		addr;
+			uint8		len;
+		};
+	} para;
+    uint8 i=0;
+    i=val_getPara(para.u,buf);
+    dbg("%d,%d,%d",para.fun,para.addr,para.len);
+    if((i > 3 )&&( para.len > 127)&& (para.len!=0))
+    {
+        dbg("para err");
+        return 1;
+    }
+    switch(para.fun)
+    {
+        case 1: //读
+        {
+			uint8 i;
+            uint8 eeprom_buf[128];
+            EEPROM_Read(para.addr,eeprom_buf, para.len);
+            for (i=0; i<para.len; i++)
+            {
+                printf("0x%02X ", eeprom_buf[i]);
+                if((i+1)%16 == 0)
+                {
+                    printf("\r\n");
+                }
+            }
+            break;
+        }
+        case 2://写
+        {
+						uint8 i;
+            uint8 eeprom_buf[128];
+            for(i=0;i<para.len;i++)
+            {
+               eeprom_buf[i]=0xFF;
+            }
+            EEPROM_Write(para.addr,eeprom_buf, para.len);
+            break;
+        }
+		default:
+		{
+            return 1;
+		}
+    }
+    memset(para.u,0,sizeof(para));
+    eeprom_Menu();
+    return 0;
+
+}
+
+
+u8 datrry[16]={0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,
+                0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01};
+/*****************************************************************************
+ 函 数 名  : cs_rfmifaretest
  功能描述  : softtime测试驱动
  输入参数  : char * buf
              int len
@@ -122,47 +244,134 @@ void soft_timeMenu(void)
     修改内容   : 新生成函数
 
 *****************************************************************************/
-int cs_softtimetest(char * buf, int len)
+int cs_rfmifaretest(char * buf, int len)
 {
 	union {
-		uint8 u[2];
+		uint8 u[10];
 		struct {
 			uint8		FUNC;
-			uint8		MID;
+			u8          dat[9];
 		};
 	} para;
     uint8 i=0;
     i=val_getPara(para.u,buf);
-    dbg("%d,%d",para.FUNC,para.MID);
-    if(i>3)
+    dbg("%s",buf);
+    if(i>10)
     {
         dbg("para err");
         return 1;
     }
-    switch(para.FUNC)
+
+    switch(buf[0])
     {
-        case 1:
+        case '1':
         {
-
+            if((para.dat[0]%4) != 3)
+            {
+                u32 type =msgType(EVENT_RFID_RDBLK,MSG_SRC_CONSOLE,MSG_DT_VAL,1);
+                dbg("type:0x%.8x,blk:%d",type,para.dat[0]);
+    			msg_sendVal(hMsgSz[MSGQ_RFID],type,para.dat[0]);
+			}
+			else
+			{
+			    dbg("err,pwd ctr blk");
+			}
             break;
         }
-        case 2:
+        case '2':
         {
-
+            if((para.dat[0]%4) != 3)
+            {
+            	u8 * p = mem_malloc(17);
+    			*p = para.dat[0];	// for blockid//
+    			memcpy(p+1,datrry,16);
+    			//dbg_hex(p, 17);
+                u32 type =msgType(EVENT_RFID_WRBLK,MSG_SRC_CONSOLE,MSG_DT_PTR_M,17);
+                dbg("type:0x%.8x,blk:%d",type,para.dat[0]);
+                msg_sendVal(hMsgSz[MSGQ_RFID],type,(u32)p);
+    			mem_free(p);
+			}
+			else
+			{
+			    dbg("err,pwd ctr blk");
+			}
             break;
         }
-        case 3:
+        case '3':
         {
-
+            u32 type =msgType(EVENT_RFID_PURSE_INIT,MSG_SRC_CONSOLE,MSG_DT_CH,4);
+            u32 money;
+            memcpy(&money,para.dat,4);
+            dbg("type:0x%.8x,money:%d",type,money);
+			msg_sendVal(hMsgSz[MSGQ_RFID],type,money);
             break;
         }
+        case '4':
+        {
+            u32 type =msgType(EVENT_RFID_PURSE_PAY,MSG_SRC_CONSOLE,MSG_DT_CH,4);
+            u32 money;
+            memcpy(&money,para.dat,4);
+            dbg("type:0x%.8x",type);
+            msg_sendVal(hMsgSz[MSGQ_RFID],type,money);
+            break;
+        }
+        case '5':
+        {
+            u32 type =msgType(EVENT_RFID_PURSE_CUT,MSG_SRC_CONSOLE,MSG_DT_CH,4);
+            u32 money;
+            memcpy(&money,para.dat,4);
+            dbg("type:0x%.8x",type);
+            msg_sendVal(hMsgSz[MSGQ_RFID],type,money);
+            break;
+        }
+        case '6':
+        {
+            u32 type =msgType(EVENT_RFID_PURSE_BLANCE,MSG_SRC_CONSOLE,0,0);
+            dbg("type:0x%.8x",type);
+            msg_sendVal(hMsgSz[MSGQ_RFID],type,0);
+            break;
+        }
+		case 'c':
+		{
+		    UN32 bak_user;
+		    bak_user.u = get_rf_uid();
+		    if(rfUsr_append(bak_user.uch)==OK)
+            {
+                dbg("add user ok");
+            }
+            else
+            {
+                dbg("add user err");
+            }
+			break;
+		}
+		case 'd':
+		{
+		    UN32 bak_user;
+		    bak_user.u = get_rf_uid();
+		    if(rfUsr_pop(bak_user.uch)==OK)
+            {
+                dbg("del user ok");
+            }
+            else
+            {
+                dbg("del user err");
+            }
+			break;
+		}
+		case 'e':
+		{
+		    rfUsr_showRfSerial();
+			break;
+		}
+
 		default:
 		{
             return 1;
 		}
     }
     memset(para.u,0,sizeof(para));
-    soft_timeMenu();
+    RfMifareMenu();
     return 0;
 }
 
@@ -215,7 +424,8 @@ uint8 val_getPara(uint8 *cp,char *string)
     return j;
 }
 
-void USART1_IRQHandler(void)
+
+void USART3_IRQHandler(void)
 {
 	if((console_uart->SR & USART_SR_RXNE) != 0) //0：数据没有收到；1：收到数据，可以读出。
 	{
@@ -263,14 +473,15 @@ void TaskConsole( void *pvParameters )
 {
 	csSem 	= sem_create(100,0);
 	dbg("CC:%s %s",__DATE__,__TIME__);
-	task_sleep(100);
+	task_sleep(10);
+	dbg("console FreeStack:%d",OSTaskGetFreeStackSpace(htaskget(0)));
     for(;;)
     {
         static char buf[256];
         static int len=0;
         char ch;
         sem_pend(csSem);
-    	if(OK == com_getch(COM1,&ch))
+    	if(OK == com_getch(console_com,&ch))
     	{
             buf[len++] = ch;
             if(ch < 0x20)

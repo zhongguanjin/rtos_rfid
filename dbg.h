@@ -9,9 +9,16 @@
 #if (DBG_USE != 0)
 #define dbg(fmt,args...)	printf("[%s]:" fmt "\r\n",__func__,## args)
 #define chk(x);				if(x)dbg("[Chk]%s:%d\r\n",__FILE__,(int)__LINE__);
+
+void dbg_out(char * buf, u32 len);
+
+
 #else
 #define dbg(fmt,args...)
 #define chk(x);
+void dbg_out(char * buf, u32 len);
+
+
 #endif
 
 
