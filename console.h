@@ -4,8 +4,9 @@
 #include "config.h"
 #include "com.h"
 
-#define console_com  COM3
-#define console_uart USART3
+#define console_com  COM1
+#define console_uart USART1
+#define console_rxDeal()  com1_rxDeal()
 
 typedef int (*consoleCallback)(char * buf, int len);
 extern consoleCallback console_cb;

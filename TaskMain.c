@@ -24,7 +24,7 @@
 #include "Syn6658.h"
 
 #include "TaskRfid.h"
-
+#include "ccu.h"
 /********************************************************************/
 // 新架构: 模式 + 状态机
 
@@ -48,6 +48,7 @@ enum
 
 tDevInfo_t DevInfo;
 
+ccubuf_t mainccubuf;
 
 
 TimerHandle_t   MainTimeHandle	= NULL;
@@ -155,7 +156,10 @@ void App_Rfid(Msg_t pm)
     {
         case RFID_GET:
         {
-
+            memcpy(mainccubuf.info,pm->uch,4);
+            mainccubuf.cmdType=0x01;
+                        mainccubuf.cmd=0xA1;
+            com3_tx_rsp(mainccubuf,0,0x0A);
             if(rfUsr_isRfok(&pm->uch[0])!=ERR)
             {
                 char str[]={"有效卡"};
@@ -178,6 +182,10 @@ void App_Rfid(Msg_t pm)
         case RFID_LEAVE:
         {
             dbg("rf_leave");
+            mainccubuf.cmdType=0x01;
+                        mainccubuf.cmd=0xA1;
+            com3_tx_rsp(mainccubuf,1,0x0A);
+
             break;
         }
         case RFID_NSF:

@@ -21,9 +21,10 @@
 #include "dbg.h"
 #include "com.h"
 #include "TaskRfid.h"
-
 #include "Syn6658.h"
 #include "mycfg.h"
+#include "ccu.h"
+
 void Led_DispPro(void);
 void led_init(void);
 
@@ -150,8 +151,8 @@ void Led_DispPro(void)
 void TaskLoop( void *pvParameters )
 {
     u8 idx=0;
-	com_init(syn6658_com,9600);	//
-	//com_init(COM3,19200);	//
+	com_init(syn6658_com,9600);	//com2
+	com_init(ccu_com,19200);	//
 	com_init(rfid_com,9600);	// for rfid
 	led_init();
     dbg("CC:%s %s",__DATE__,__TIME__);
@@ -168,17 +169,17 @@ void TaskLoop( void *pvParameters )
         {   // 分频率检查项
             case LP_COM2_RX:
             {
-                com2_rxDeal();
+                syn6658_rxDeal();
                 break;
             }
             case LP_COM3_RX:
             {
-                //com3_rxDeal();
+                ccu_rxDeal();
                 break;
             }
             case LP_COM4_RX:
             {
-                com4_rxDeal();
+                rfid_rxDeal();
                 break;
             }
 			case LP_LEDDISP:

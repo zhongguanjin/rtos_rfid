@@ -63,7 +63,7 @@ void com_init(COM_DEF COMx,u32 baud)
                 gpio_config(GPIOB, GPIO_Pin_11,GPIO_Mode_IN_FLOATING);
                 usart_config(USART3, baud);
                 //使能串口3中断，并设置优先级
-                nvic_config(USART3_IRQn,0,0);
+                nvic_config(USART3_IRQn,1,1);
                 break;
             }
         case COM4:
@@ -288,7 +288,7 @@ void USART2_IRQHandler(void)
 
 }
 
-__weak void USART3_IRQHandler(void)
+void USART3_IRQHandler(void)
 {
 	if((USART3->SR & USART_SR_RXNE) != 0)
 	{

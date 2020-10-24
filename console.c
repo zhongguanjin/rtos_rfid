@@ -6,6 +6,7 @@
 #include "dbg.h"
 
 #include "TaskRfid.h"
+#include "eeprom.h"
 
 int console_main(char * buf, int len);
 void console_mainMenu(void);
@@ -425,30 +426,30 @@ uint8 val_getPara(uint8 *cp,char *string)
 }
 
 
-void USART3_IRQHandler(void)
+void USART1_IRQHandler(void)
 {
-	if((console_uart->SR & USART_SR_RXNE) != 0) //0：数据没有收到；1：收到数据，可以读出。
+	if((USART1->SR & USART_SR_RXNE) != 0) //0：数据没有收到；1：收到数据，可以读出。
 	{
 		/* Receive data & clear flag */
-		USART_ClearFlag(console_uart, USART_FLAG_RXNE);
-		comBuf[console_com].rx.buf[comBuf[console_com].rx.in++] = (u8)(console_uart->DR);
+		USART_ClearFlag(USART1, USART_FLAG_RXNE);
+		comBuf[COM1].rx.buf[comBuf[COM1].rx.in++] = (u8)(USART1->DR);
 	    sem_postIsr(csSem);
 	}
-	else if((console_uart->SR & USART_SR_TXE) != 0)//0：数据还没有被转移到移位寄存器；1：数据已经被转移到移位寄存器。
+	else if((USART1->SR & USART_SR_TXE) != 0)//0：数据还没有被转移到移位寄存器；1：数据已经被转移到移位寄存器。
 	{
-	    USART_ClearFlag(console_uart, USART_FLAG_TXE);
-		if(comBuf[console_com].tx.in != comBuf[console_com].tx.out)
+	    USART_ClearFlag(USART1, USART_FLAG_TXE);
+		if(comBuf[COM1].tx.in != comBuf[COM1].tx.out)
 		{
-			console_uart->DR = (u16)(comBuf[console_com].tx.buf[comBuf[console_com].tx.out++]);
+			USART1->DR = (u16)(comBuf[COM1].tx.buf[comBuf[COM1].tx.out++]);
 		}
 		else
 		{
-			USART_ITConfig(console_uart, USART_IT_TXE, DISABLE);
+			USART_ITConfig(USART1, USART_IT_TXE, DISABLE);
 		}
 	}
 	else
 	{
-	    USART_ClearFlag(console_uart, USART_FLAG_FE|USART_FLAG_ORE);
+	    USART_ClearFlag(USART1, USART_FLAG_FE|USART_FLAG_ORE);
 	}
 
 }
@@ -477,40 +478,45 @@ void TaskConsole( void *pvParameters )
 	dbg("console FreeStack:%d",OSTaskGetFreeStackSpace(htaskget(0)));
     for(;;)
     {
-        static char buf[256];
-        static int len=0;
-        char ch;
         sem_pend(csSem);
-    	if(OK == com_getch(console_com,&ch))
-    	{
-            buf[len++] = ch;
-            if(ch < 0x20)
-            {
-                if(len != 0)
-                {   // 包含0D
-                    buf[len] = 0;
-                    if(console_cb == NULL)
-                    {
-                        console_cb = console_main;
-                    }
-                    if(console_cb(buf,len) != 0)
-                    {
-                        console_cb = NULL;
-                        console_mainMenu();
-                    }
-                }
-                len = 0;
-            }
-            else
-            {
-                //printf("%c\r\n",ch);
-            }
-    	}
+        console_rxDeal();
     }
-
 }
 
 
+
+ void com1_rxDeal(void)
+ {
+     static char buf[256];
+     static int len=0;
+     char ch;
+     if(OK == com_getch(console_com,&ch))
+     {
+         buf[len++] = ch;
+         if(ch < 0x20)
+         {
+             if(len != 0)
+             {   // 包含0D
+                 buf[len] = 0;
+                 if(console_cb == NULL)
+                 {
+                     console_cb = console_main;
+                 }
+                 if(console_cb(buf,len) != 0)
+                 {
+                     console_cb = NULL;
+                     console_mainMenu();
+                 }
+             }
+             len = 0;
+         }
+         else
+         {
+             //printf("%c\r\n",ch);
+         }
+     }
+
+ }
 
 
 

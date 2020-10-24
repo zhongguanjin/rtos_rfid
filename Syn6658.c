@@ -1,7 +1,7 @@
 #include "Syn6658.h"
 #include "string.h"
 #include  "dbg.h"
-
+#include "delay.h"
 
 
 char code_text[] = {"»¶Ó­Ê¹ÓÃ¶ÁÐ´Æ÷"};

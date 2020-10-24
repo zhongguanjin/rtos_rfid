@@ -24,8 +24,9 @@
 #include "eeprom.h"
 #include "Syn6658.h"
 
+#include "ccu.h"
 
-
+ccubuf_t rfccubuf;
 
 TimerHandle_t   RfidTimeHandle	= NULL;
 void RfidTimerFunction( void *pvParameters );
@@ -130,41 +131,32 @@ int rfUsr_isRfok(u8 *buf)
 	return 0;
 }
 
-/*返回1，满*/
-int rfUsr_isRfFull(void)
-{
-	if(grfUser.cnt>=RFUSER_MAX)
-	{
-	    dbg("user full");
-		return 1;
-	}
-	return 0;
-}
-/*返回1，空*/
-int rfUsr_isRFEmpty(void)
-{
-	if(grfUser.cnt==0)
-	{
-	    dbg("user empty");
-		return 1;
-	}
-	return 0;
-}
-
 
 /*增加一个到后面*/
 int rfUsr_append(u8 *buf)
 {
-    if(rfUsr_isRfFull()==OK)
-    {
-        return 0;
-    }
-	memcpy((u8 *)(&grfUser.serial[grfUser.cnt][0]), buf, 4);
-	grfUser.cnt++;
-	grfUser.crc =0xff;
-	EEPROM_Write(ADDR_RFUSER, (u8 *)(&grfUser),sizeof(T_RFUSER));
-	dbg("save rf serial[%d]",grfUser.cnt);
-	return 1;
+	if(grfUser.cnt>=RFUSER_MAX)
+	{
+	    dbg("user full");
+		return 0;
+	}
+	int loop=grfUser.cnt;
+	while(loop--)
+	{
+		if(memcmp(buf, (u8 *)&grfUser.serial[loop][0], 4) == NULL)
+		{
+		    /*找到相同数据*/
+		    dbg("user exist");
+		    return 0;
+		}
+	}
+    memcpy((u8 *)(&grfUser.serial[grfUser.cnt][0]), buf, 4);
+    grfUser.cnt++;
+    grfUser.crc =0xff;
+    EEPROM_Write(ADDR_RFUSER, (u8 *)(&grfUser),sizeof(T_RFUSER));
+    dbg("save rf serial[%d]",grfUser.cnt);
+    return 1;
+
 }
 
 /*删除卡*/
@@ -176,14 +168,21 @@ int rfUsr_pop(u8 *buf)
 		if(memcmp(buf, (u8 *)&grfUser.serial[loop][0], 4) == NULL)
 		{
 		    /*找到相同数据*/
-		    memcpy((u8 *)(&grfUser.serial[loop][0]), 0, 4);
+            uint8 j;
+            for(j=loop; j<grfUser.cnt;j++) //在i数组后面的元素往前移
+            {
+                memcpy((u8 *)(&grfUser.serial[j][0]), (u8 *)(&grfUser.serial[j+1][0]), 4);
+            }
+		    u8 sbuf[4] = {0,0,0,0};
+		    memcpy((u8 *)(&grfUser.serial[grfUser.cnt][0]), sbuf, 4);
             grfUser.cnt--;
             grfUser.crc =0xff;
             EEPROM_Write(ADDR_RFUSER, (u8 *)(&grfUser),sizeof(T_RFUSER));
-            dbg("save rf serial[%d]",grfUser.cnt);
+            dbg("del rf serial[%d]",grfUser.cnt);
 			return 1;
 		}
 	}
+	dbg("user absent");
 	return 0;
 }
 /*****************************************************************************
@@ -254,12 +253,13 @@ void rfUsr_init(void)
 {
 	EEPROM_Read(ADDR_RFUSER,(u8 *)(&grfUser),sizeof(T_RFUSER));
 	dbg("--rf user cnt::%d---",grfUser.cnt);
-	if(rfUsr_isRfFull()==OK)
-    {
+	if(grfUser.cnt>RFUSER_MAX)
+	{
         dbg("cnt fail");
 		rfUsr_setDefault();
         return ;
-    }
+
+	}
 	{
 		u16 crc = 0xff;
 		if(grfUser.crc != crc)
@@ -496,6 +496,7 @@ u8 rf_key_check(u8 blk)
 void rf_init_check(void)
 {
 	rf_reInitRx(0);
+	rfUsr_init();
     if( rf_init() == OK)
     {
         if(OK == rf_sendCmd(RF_HEAD_C2M,C2M_info))//检测rf card?
@@ -508,7 +509,6 @@ void rf_init_check(void)
             if(rf_goto_auto() == OK)
             {
                 dbg("RF_HEAD_C2N ok");
-                rfUsr_init();
             }
             else
             {    /* 检测RF模块错误 */
@@ -800,6 +800,7 @@ void RfidTimerFunction( void *pvParameters )
 
 
 
+
 void TaskRfid(void *pvParameters)
 {
 
@@ -863,6 +864,10 @@ void TaskRfid(void *pvParameters)
 				{	/* 读卡数据块 */
 					if(OK != rf_key_check(msg.uch[0]))
 					{
+                        rfccubuf.cmdType=0x01;
+                        rfccubuf.cmd=0xA3;
+                        com3_tx_rsp(rfccubuf,1,0x06);
+
                         break;
                     }
 					if(OK == rf_sendCmd(RF_HEAD_C2G,msg.uch))
@@ -870,27 +875,48 @@ void TaskRfid(void *pvParameters)
 						memcpy(rfMux.devInfo.dat,rfMux.rPkt.info,16);
 						dbg("read OK!");
 						dbg_hex(rfMux.devInfo.dat, 16);
+                        memcpy(rfccubuf.info,rfMux.devInfo.dat,16);
+                        rfccubuf.cmdType=0x01;
+                        rfccubuf.cmd=0xA3;
+                        com3_tx_rsp(rfccubuf,0,0x16);
+
 					}
 					else
 					{
 						dbg("read err!");
+                        rfccubuf.cmdType=0x01;
+                        rfccubuf.cmd=0xA3;
+                        com3_tx_rsp(rfccubuf,1,0x06);
+
 					}
 					break;
 				}
 				case EVENT_RFID_WRBLK:
 				{	/* 写卡数据块 */
-					if(OK != rf_key_check(*(u8 *)(msg.ptr)))
+                    dbg_hex((u8 *)(msg.ptr),17);
+                    u8 dat[17];
+                    memcpy(dat,(u8 *)(msg.ptr),17);
+					if(OK != rf_key_check(dat[0]))
 					{
+                        rfccubuf.cmdType=0x01;
+                        rfccubuf.cmd=0xA4;
+                        com3_tx_rsp(rfccubuf,1,0x06);
+
                         break;
                     }
-                    if(OK == rf_sendCmd(RF_HEAD_C2H,(u8 *)(msg.ptr)))
+                    if(OK == rf_sendCmd(RF_HEAD_C2H,dat))
                     {
-                        dbg_hex((u8 *)(msg.ptr),16);
-                            dbg("write OK!");
+                        dbg("write OK!");
+                        rfccubuf.cmdType=0x01;
+                        rfccubuf.cmd=0xA4;
+                        com3_tx_rsp(rfccubuf,0,0x06);
                     }
                     else
                     {
-                            dbg("write err!");
+                        dbg("write err!");
+                        rfccubuf.cmdType=0x01;
+                        rfccubuf.cmd=0xA4;
+                        com3_tx_rsp(rfccubuf,1,0x06);
                     }
                     break;
                 }
@@ -917,6 +943,48 @@ void TaskRfid(void *pvParameters)
                     money_add(blkdef, msg.u);
                     break;
                 }
+                case EVENT_RFID_USER_REQ:
+                {
+                    uint8 loop;
+                    for(loop=0;loop<grfUser.cnt;loop++)
+                    {
+                        //dbg("id:%d, serial:%02X %02X %02X %02X",loop,
+                        //grfUser.serial[loop][3],grfUser.serial[loop][2],grfUser.serial[loop][1],grfUser.serial[loop][0]);
+                        memcpy(&rfccubuf.info[loop*4+1],(u8 *)(&grfUser.serial[loop][0]),4);
+                    }
+                    rfccubuf.cmdType=0x02;
+                    rfccubuf.cmd=0xA1;
+                    rfccubuf.info[0]= grfUser.cnt;
+                    com3_tx_rsp(rfccubuf,0,rfccubuf.info[0]*4+7);
+                    break;
+                }
+                case EVENT_RFID_USER_ADD:
+                {
+                    dbg("uid:0x%.8x",msg.u);
+                    if(rfUsr_append(msg.uch)==OK)
+                    {
+                        dbg("add user ok");
+                    }
+                    else
+                    {
+                        dbg("add user err");
+                    }
+                    break;
+                }
+                case EVENT_RFID_USER_DEL:
+                {
+                    dbg("uid:0x%.8x",msg.u);
+                    if(rfUsr_pop(msg.uch)==OK)
+                    {
+                        dbg("del user ok");
+                    }
+                    else
+                    {
+                        dbg("del user err");
+                    }
+                    break;
+                }
+
                 default:
                 {
                     dbg("msg rcv:\r\n");

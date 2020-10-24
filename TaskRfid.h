@@ -25,6 +25,7 @@
 #include "com.h"
 
 #define rfid_com  COM4
+#define rfid_rxDeal()  com4_rxDeal()
 
 
 
@@ -144,7 +145,6 @@ typedef struct
 void rf_init_check(void);
 
 extern int rfUsr_isRfok(u8 *buf);
-extern int rfUsr_isRfFull(void);
 extern int rfUsr_append(u8 *buf);
 extern void rfUsr_showRfSerial(void);
 extern void rfUsr_setDefault(void);

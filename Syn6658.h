@@ -6,6 +6,7 @@
 #include "com.h"
 
 #define syn6658_com  COM2
+#define syn6658_rxDeal()    com2_rxDeal()
 
 
 #define SYN_BUF_MAX  128
