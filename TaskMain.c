@@ -156,9 +156,10 @@ void App_Rfid(Msg_t pm)
     {
         case RFID_GET:
         {
+           #if (RFID_TYPE == MASTER_TYPE)
             memcpy(mainccubuf.info,pm->uch,4);
             mainccubuf.cmdType=0x01;
-                        mainccubuf.cmd=0xA1;
+            mainccubuf.cmd=0xA1;
             com3_tx_rsp(mainccubuf,0,0x0A);
             if(rfUsr_isRfok(&pm->uch[0])!=ERR)
             {
@@ -174,18 +175,18 @@ void App_Rfid(Msg_t pm)
                 Syn6658_Play(str,strlen(str));
                 dbg("rf_get err");
             }
-
-            //bell_set(BELL_PLAY_SHORT2);
-            //dbg("money:%d",money);
+            #else
+            bell_set(BELL_PLAY_SHORT2);
+            dbg("money:%d",money);
+           #endif
             break;
         }
         case RFID_LEAVE:
         {
             dbg("rf_leave");
             mainccubuf.cmdType=0x01;
-                        mainccubuf.cmd=0xA1;
+            mainccubuf.cmd=0xA1;
             com3_tx_rsp(mainccubuf,1,0x0A);
-
             break;
         }
         case RFID_NSF:
@@ -201,7 +202,6 @@ void App_Rfid(Msg_t pm)
             Syn6658_Play(str,strlen(str));
             break;
         }
-
         default:
             break;
     }

@@ -702,7 +702,9 @@ u8 money_dec(u8 blk,u32 money)
             memcpy(&curmoney,rfMux.rPkt.info, 4);
             if(curmoney < money)
             {
+#if(RFID_TYPE == SLAVE_TYPE)
                 rf_reportMain(RFID_NSF,curmoney);
+#endif
                 mem_free(C2pInfo);
                 return OK;
             }
@@ -711,7 +713,15 @@ u8 money_dec(u8 blk,u32 money)
                 if(OK == rf_sendCmd(RF_HEAD_C2J,&C2pInfo->mode)) //扣钱
                 {
                     curmoney=curmoney-money;
+#if(RFID_TYPE == SLAVE_TYPE)
                     rf_reportMain(RFID_GET,curmoney);
+#else
+                    u32 type = msgType(EVENT_RFID_PURSE_BLANCE,MSG_SRC_RFID,MSG_DT_VAL,1);
+                    if(msg_sendVal(hMsgSz[MSGQ_RFID],type,C2pInfo->blkid) == OS_FALSE)
+                    {
+                        chk(1);
+                    }
+#endif
                     mem_free(C2pInfo);
                     return OK;
                 }
@@ -720,7 +730,9 @@ u8 money_dec(u8 blk,u32 money)
         mem_free(C2pInfo);
     }
     dbg("money dec err!");
+#if(RFID_TYPE == SLAVE_TYPE)
     rf_reportMain(RFID_ERR,0);
+#endif
     return ERR;
 }
 
@@ -843,8 +855,12 @@ void TaskRfid(void *pvParameters)
                         u8 mifareSAK= rfMux.rPkt.info[3];
                         dbg("ATQ:0x%.4x,SAK:0x%.2x,uid: 0x%.8X",mifareATQ,mifareSAK,rfMux.devInfo.uid.u);
 						/* 定时查询卡是否离开 */
-						rf_reportMain(RFID_GET,rfMux.devInfo.uid.u);
-						//money_dec(blkdef,1);
+#if(RFID_TYPE == MASTER_TYPE)
+
+                        rf_reportMain(RFID_GET,rfMux.devInfo.uid.u);
+#else
+                        money_dec(blkdef,1);
+#endif
 						TimerStart(RfidTimeHandle,1000);
                     }
                     else if(rfMux.rPkt.infoLen == 0x08)
@@ -855,7 +871,12 @@ void TaskRfid(void *pvParameters)
                         u8 mifareSAK= rfMux.rPkt.info[2];
                         dbg("ATQ:0x%.4x,SAK:0x%.2x,uid: 0x%.8X",mifareATQ,mifareSAK,rfMux.devInfo.uid.u);
 						/* 定时查询卡是否离开 */
-						rf_reportMain(RFID_GET,rfMux.devInfo.uid.u);
+#if(RFID_TYPE == MASTER_TYPE)
+
+                        rf_reportMain(RFID_GET,rfMux.devInfo.uid.u);
+#else
+                        money_dec(blkdef,1);
+#endif
 						TimerStart(RfidTimeHandle,1000);
                     }
 					break;
@@ -901,7 +922,6 @@ void TaskRfid(void *pvParameters)
                         rfccubuf.cmdType=0x01;
                         rfccubuf.cmd=0xA4;
                         com3_tx_rsp(rfccubuf,1,0x06);
-
                         break;
                     }
                     if(OK == rf_sendCmd(RF_HEAD_C2H,dat))
@@ -928,19 +948,82 @@ void TaskRfid(void *pvParameters)
                 }
                 case EVENT_RFID_PURSE_CUT:
                 {
-                    dbg("money:0x%.8x",msg.u);
-                    money_dec(blkdef, msg.u);
+                    if(msg.src == MSG_SRC_CONSOLE)
+                    {
+                        dbg("money:0x%.8x",msg.u);
+                        money_dec(blkdef, msg.u);
+                    }
+                    else
+                    {
+                        dbg_hex((u8 *)(msg.ptr),5);
+                        u8 dat[5];
+                        memcpy(dat,(u8 *)(msg.ptr),5);
+                        if(money_dec(dat[0], u32Type(dat[1], dat[2], dat[3], dat[4]))==OK)
+                        {
+                            rfccubuf.cmdType=0x03;
+                            rfccubuf.cmd=0xA2;
+                            com3_tx_rsp(rfccubuf,0,0x06);
+                        }
+                        else
+                        {
+                            rfccubuf.cmdType=0x03;
+                            rfccubuf.cmd=0xA2;
+                            com3_tx_rsp(rfccubuf,1,0x06);
+                        }
+                    }
                     break;
                 }
                 case EVENT_RFID_PURSE_BLANCE:
                 {
-                    money_balance(blkdef);
+                    if(msg.src == MSG_SRC_CONSOLE)
+                    {
+                        money_balance(blkdef);
+                    }
+                    else
+                    {
+                         dbg("blk:%d",msg.uch[0]);
+                         if(money_balance(msg.uch[0])==OK)
+                         {
+                             rfccubuf.cmdType=0x03;
+                             rfccubuf.cmd=0xA4;
+                             memcpy(rfccubuf.info,rfMux.rPkt.info, 4);
+                             com3_tx_rsp(rfccubuf,0,0x0A);
+                         }
+                         else
+                         {
+                             rfccubuf.cmdType=0x03;
+                             rfccubuf.cmd=0xA4;
+                             com3_tx_rsp(rfccubuf,0,0x06);
+                         }
+                    }
                     break;
                 }
                 case EVENT_RFID_PURSE_PAY:
                 {
-                    dbg("money:0x%.8x",msg.u);
-                    money_add(blkdef, msg.u);
+                    if(msg.src == MSG_SRC_CONSOLE)
+                    {
+                        dbg("money:0x%.8x",msg.u);
+                        money_add(blkdef, msg.u);
+                    }
+                    else
+                    {
+                        dbg_hex((u8 *)(msg.ptr),5);
+                        u8 dat[5];
+                        memcpy(dat,(u8 *)(msg.ptr),5);
+                        if(money_add(dat[0], u32Type(dat[1], dat[2], dat[3], dat[4]) == OK))
+                        {
+                            rfccubuf.cmdType=0x03;
+                            rfccubuf.cmd=0xA3;
+                            com3_tx_rsp(rfccubuf,0,0x06);
+
+                        }
+                        else
+                        {
+                            rfccubuf.cmdType=0x03;
+                            rfccubuf.cmd=0xA3;
+                            com3_tx_rsp(rfccubuf,1,0x06);
+                        }
+                    }
                     break;
                 }
                 case EVENT_RFID_USER_REQ:
@@ -964,10 +1047,17 @@ void TaskRfid(void *pvParameters)
                     if(rfUsr_append(msg.uch)==OK)
                     {
                         dbg("add user ok");
+                        rfccubuf.cmdType=0x02;
+                        rfccubuf.cmd=0xA2;
+                        com3_tx_rsp(rfccubuf,0,0x06);
                     }
                     else
                     {
                         dbg("add user err");
+                        rfccubuf.cmdType=0x02;
+                        rfccubuf.cmd=0xA2;
+                        com3_tx_rsp(rfccubuf,1,0x06);
+
                     }
                     break;
                 }
@@ -977,10 +1067,16 @@ void TaskRfid(void *pvParameters)
                     if(rfUsr_pop(msg.uch)==OK)
                     {
                         dbg("del user ok");
+                        rfccubuf.cmdType=0x02;
+                        rfccubuf.cmd=0xA3;
+                        com3_tx_rsp(rfccubuf,0,0x06);
                     }
                     else
                     {
                         dbg("del user err");
+                        rfccubuf.cmdType=0x02;
+                        rfccubuf.cmd=0xA3;
+                        com3_tx_rsp(rfccubuf,1,0x06);
                     }
                     break;
                 }

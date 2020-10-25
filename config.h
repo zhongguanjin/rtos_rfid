@@ -58,6 +58,8 @@ typedef union {
 	int8		ch[2];
 } UN16;
 
+#define u32Type(dt0,dt1,dt2,dt3)		(((u32)dt3<<24)|((u32)dt2<<16)|((u32)dt1<<8)|(u32)dt0)
+#define u16Type(dt0,dt1)		        (((u16)dt1<<8)|(u16)dt0)
 
 
 #define val_and(REG,VAL)		((REG) &= (VAL))	// µ¥´¿Óë²Ù×÷

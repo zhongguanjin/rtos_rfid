@@ -19,6 +19,11 @@
 #ifndef _TASKRFID_H_
 #define _TASKRFID_H_
 
+#define SLAVE_TYPE     0 //从机模式，类似公交地铁刷卡扣款模式
+
+#define MASTER_TYPE    1 //主机模式，管理员模式
+
+#define RFID_TYPE     MASTER_TYPE
 
 #include "config.h"
 
