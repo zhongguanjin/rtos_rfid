@@ -706,7 +706,7 @@ u8 money_dec(u8 blk,u32 money)
                 rf_reportMain(RFID_NSF,curmoney);
 #endif
                 mem_free(C2pInfo);
-                return OK;
+                return ERR;
             }
             else
             {
@@ -942,8 +942,30 @@ void TaskRfid(void *pvParameters)
                 }
                 case EVENT_RFID_PURSE_INIT:
                 {
-                    dbg("money:0x%.8x",msg.u);
-                    money_init(blkdef, msg.u);
+                    if(msg.src == MSG_SRC_CONSOLE)
+                    {
+                        dbg("money:0x%.8x",msg.u);
+                        money_init(blkdef, msg.u);
+                    }
+                    else
+                    {
+                        dbg_hex((u8 *)(msg.ptr),5);
+                        u8 dat[5];
+                        memcpy(dat,(u8 *)(msg.ptr),5);
+                        if(money_init(dat[0], u32Type(dat[1], dat[2], dat[3], dat[4]))==OK)
+                        {
+                            rfccubuf.cmdType=0x03;
+                            rfccubuf.cmd=0xA1;
+                            com3_tx_rsp(rfccubuf,0,0x06);
+                        }
+                        else
+                        {
+                            rfccubuf.cmdType=0x03;
+                            rfccubuf.cmd=0xA1;
+                            com3_tx_rsp(rfccubuf,1,0x06);
+                        }
+                    }
+
                     break;
                 }
                 case EVENT_RFID_PURSE_CUT:
@@ -993,7 +1015,7 @@ void TaskRfid(void *pvParameters)
                          {
                              rfccubuf.cmdType=0x03;
                              rfccubuf.cmd=0xA4;
-                             com3_tx_rsp(rfccubuf,0,0x06);
+                             com3_tx_rsp(rfccubuf,1,0x06);
                          }
                     }
                     break;
@@ -1007,10 +1029,10 @@ void TaskRfid(void *pvParameters)
                     }
                     else
                     {
-                        dbg_hex((u8 *)(msg.ptr),5);
                         u8 dat[5];
                         memcpy(dat,(u8 *)(msg.ptr),5);
-                        if(money_add(dat[0], u32Type(dat[1], dat[2], dat[3], dat[4]) == OK))
+                        dbg_hex(dat,5);
+                        if(money_add(dat[0], u32Type(dat[1], dat[2], dat[3], dat[4])) == OK)
                         {
                             rfccubuf.cmdType=0x03;
                             rfccubuf.cmd=0xA3;

@@ -140,7 +140,7 @@ void ccu_cmdDeal(void)
                        u8 * p = mem_malloc(17);
                        memcpy(p,ccubuf.info,17);
                        dbg_hex(p, 17);
-                       u32 type =msgType(EVENT_RFID_WRBLK,MSG_SRC_CONSOLE,MSG_DT_PTR_M,17);
+                       u32 type =msgType(EVENT_RFID_WRBLK,MSG_SRC_CCU,MSG_DT_PTR_M,17);
                        dbg("type:0x%.8x,blk:%d",type,ccubuf.info[0]);
                        msg_sendVal(hMsgSz[MSGQ_RFID],type,(u32)p);
                        mem_free(p);
@@ -202,9 +202,89 @@ void ccu_cmdDeal(void)
           }
            break;
        }
-       case 0x03: //读写器参数设置
+       case 0x03: //
        {
+            switch (ccubuf.cmd)
+            {
+               case 0xA1: //钱包初始化
+               {
+                   if((ccubuf.info[0]%4) != 3)
+                   {
+                       u8 * p = mem_malloc(5);
+                       memcpy(p,ccubuf.info,5);
+                       dbg_hex(p, 5);
+                       u32 type =msgType(EVENT_RFID_PURSE_INIT,MSG_SRC_CCU,MSG_DT_PTR_M,5);
+                       dbg("type:0x%.8x,blk:%d",type,ccubuf.info[0]);
+                       msg_sendVal(hMsgSz[MSGQ_RFID],type,(u32)p);
+                       mem_free(p);
+                   }
+                   else
+                   {
+                       dbg("err,pwd ctr blk");
+                       com3_tx_rsp(ccubuf,1,ccubuf.frameLen-5);
+                   }
+                   break;
+               }
+               case 0xA2: //
+               {
+                   if((ccubuf.info[0]%4) != 3)
+                   {
+                       u8 * p = mem_malloc(5);
+                       memcpy(p,ccubuf.info,5);
+                       dbg_hex(p, 5);
+                       u32 type =msgType(EVENT_RFID_PURSE_CUT,MSG_SRC_CCU,MSG_DT_PTR_M,5);
+                       dbg("type:0x%.8x,blk:%d",type,ccubuf.info[0]);
+                       msg_sendVal(hMsgSz[MSGQ_RFID],type,(u32)p);
+                       mem_free(p);
+                   }
+                   else
+                   {
+                       dbg("err,pwd ctr blk");
+                       com3_tx_rsp(ccubuf,1,ccubuf.frameLen-5);
+                   }
+                   break;
+               }
+               case 0xA3: //
+               {
+                   if((ccubuf.info[0]%4) != 3)
+                   {
+                       u8 * p = mem_malloc(5);
+                       memcpy(p,ccubuf.info,5);
+                       dbg_hex(p, 5);
+                       u32 type =msgType(EVENT_RFID_PURSE_PAY,MSG_SRC_CCU,MSG_DT_PTR_M,5);
+                       dbg("type:0x%.8x,blk:%d",type,ccubuf.info[0]);
+                       msg_sendVal(hMsgSz[MSGQ_RFID],type,(u32)p);
+                       mem_free(p);
+                   }
+                   else
+                   {
+                       dbg("err,pwd ctr blk");
+                       com3_tx_rsp(ccubuf,1,ccubuf.frameLen-5);
+                   }
+                   break;
+               }
+               case 0xA4:
+               {
+                   if((ccubuf.info[0]%4) != 3)
+                   {
+                       u32 type =msgType(EVENT_RFID_PURSE_BLANCE,MSG_SRC_CCU,0,1);
+                       dbg("type:0x%.8x,blk:%d",type,ccubuf.info[0]);
+                       msg_sendVal(hMsgSz[MSGQ_RFID],type,ccubuf.info[0]);
+                   }
+                   else
+                   {
+                       dbg("err,pwd ctr blk");
+                       com3_tx_rsp(ccubuf,1,ccubuf.frameLen-1);
+                   }
 
+                   break;
+               }
+              default: //其它
+              {
+
+                   break;
+              }
+           }
             break;
        }
        default: //其它
